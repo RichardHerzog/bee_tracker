@@ -52,8 +52,8 @@ def main():
         }
 
     # Start the thread which handles the database connection
-    #dbt = DatabaseConnectionThread(args["system"], "bee_activity", "beeactivity_2", valueList, 30) 
-    #dbt.start()
+    dbt = DatabaseConnectionThread(args["system"], "bee_activity", "beeactivity_2", valueList, 30) 
+    dbt.start()
 
     # Start the image processing
     ImageProcessor.processVideoStream(objFrameData, valueList, videoSource)
