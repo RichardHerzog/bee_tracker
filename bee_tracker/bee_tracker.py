@@ -37,10 +37,11 @@ def main():
     sleep(1)
 
     # Initialize frame data object (used to share video data between threads)
-    objFrameData = frameData(args)
-
+    listFrameData = [ frameData(args) for i in range(2)]
+ 
+    
     # Start the thread which handles the webcam stream
-    wst = WebcamServerThread(args, objFrameData)
+    wst = WebcamServerThread(args, listFrameData)
     wst.start()
 
     # Initialize the value list object (used to share measurement values between threads)
@@ -48,7 +49,9 @@ def main():
         'date': '2017-01-01',
         'time': '00:00:00',
         'bees': 0,
-        'light': 0
+        'light': 0,
+        'imagecount': 0,
+        'webcount': 0
         }
 
     # Start the thread which handles the database connection
@@ -56,7 +59,24 @@ def main():
     dbt.start()
 
     # Start the image processing
-    ImageProcessor.processVideoStream(objFrameData, valueList, videoSource)
+    ImageProcessor.processVideoStream(listFrameData, valueList, videoSource)
+    frameData.terminateWebThread = 1
+    #frameData.evWebThreadTerminate.wait()
+
+    print (listFrameData[0].imageCount)
+    print (listFrameData[1].imageCount)
+    print ( listFrameData[0].webCount)
+    print ( listFrameData[1].webCount)
+
+    videoSource.release()
+    
+
+
+####
+####
+
+
 
 if __name__ == "__main__":
     main()
+exit(0)

@@ -15,6 +15,38 @@ from image_processor import roiRectangle
 
 class CamHandler(BaseHTTPRequestHandler):
 
+    def processImage(self, frameData):
+
+        frameData.SetStatus(3)
+
+        # Get the raw video frame and convert it to rgb
+        img = cv2.cvtColor(frameData.rawFrame,cv2.COLOR_BGR2RGB)
+                    
+        # Draw the contours of the found objects into the frame
+        cv2.drawContours(img, frameData.contours, -1, (0,255,0), 1, 8, None, 2, (frameData.roiRect.x1, frameData.roiRect.y1))
+                    
+        # Draw the region of interest to show where it is in the raw frame
+        cv2.rectangle(img, (frameData.roiRect.x1, frameData.roiRect.y1), (frameData.roiRect.x2, frameData.roiRect.y2), (255, 0, 0))
+
+        # Draw small circles to indicate those contours which are detected as bees
+        for center in frameData.centers:
+            cv2.circle(img, (frameData.roiRect.x1 + center[0], frameData.roiRect.y1 + center[1]), 2, (255,255,255), -1) 
+
+        jpg = Image.fromarray(img)
+        tmpFile = StringIO.StringIO()
+        jpg.save(tmpFile,'JPEG')
+
+        self.wfile.write("--jpgboundary")
+        self.send_header('Content-type','image/jpeg')
+        self.send_header('Content-length',str(tmpFile.len))
+        self.end_headers()
+        self.wfile.write( tmpFile.getvalue() )
+        
+        #time.sleep(1/frameDataRef[0].fps)
+
+        frameData.webCount = frameData.webCount + 1
+        frameData.SetStatus(0)
+
     def do_GET(self):
 
         if self.path.endswith('.mjpg'):
@@ -23,32 +55,22 @@ class CamHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type','multipart/x-mixed-replace; boundary=--jpgboundary')
             self.end_headers()
 
+            frameDataRef[0].imageCount = 0
+            frameDataRef[1].imageCount = 0 
             while True:
                 try:
-
-                    # Get the raw video frame and convert it to rgb
-                    img = cv2.cvtColor(frameDataRef.rawFrame,cv2.COLOR_BGR2RGB)
                     
-                    # Draw the contours of the found objects into the frame
-                    cv2.drawContours(img, frameDataRef.contours, -1, (0,255,0), 1, 8, None, 2, (frameDataRef.roiRect.x1, frameDataRef.roiRect.y1))
-                    
-                    # Draw the region of interest to show where it is in the raw frame
-                    cv2.rectangle(img, (frameDataRef.roiRect.x1, frameDataRef.roiRect.y1), (frameDataRef.roiRect.x2, frameDataRef.roiRect.y2), (255, 0, 0))
+                    status = frameDataRef[0].status
+                    if status == 2:
+                        CamHandler.processImage(self, frameDataRef[0])
 
-                    # Draw small circles to indicate those contours which are detected as bees
-                    for center in frameDataRef.centers:
-                        cv2.circle(img, (frameDataRef.roiRect.x1 + center[0], frameDataRef.roiRect.y1 + center[1]), 2, (255,255,255), -1) 
 
-                    jpg = Image.fromarray(img)
-                    tmpFile = StringIO.StringIO()
-                    jpg.save(tmpFile,'JPEG')
-
-                    self.wfile.write("--jpgboundary")
-                    self.send_header('Content-type','image/jpeg')
-                    self.send_header('Content-length',str(tmpFile.len))
-                    self.end_headers()
-                    self.wfile.write( tmpFile.getvalue() )
-                    time.sleep(1/frameDataRef.fps)
+                    status = frameDataRef[1].status
+                    if status == 2:
+                        CamHandler.processImage(self, frameDataRef[1])
+  
+                    if frameData.terminateWebThread == 1:
+                        break;
 
                 except KeyboardInterrupt:
                     break
@@ -90,9 +112,14 @@ class WebcamServerThread(threading.Thread):
         try:
             global ip
             ip = get_ip_address()
+            print(ip)
+            
             server = ThreadedHTTPServer((ip, 8080), CamHandler)
+            
             print "server started"
             server.serve_forever()
+
+            
 
         except KeyboardInterrupt:
             capture.release()
