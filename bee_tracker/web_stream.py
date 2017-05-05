@@ -11,28 +11,37 @@ from PIL import Image
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
 from SocketServer import ThreadingMixIn
 from image_processor import frameData
+from image_processor import EnumStatus
 from image_processor import roiRectangle
 
 class CamHandler(BaseHTTPRequestHandler):
 
-    def processImage(self, frameData):
+    def processImage(self, fdr):
 
-        frameData.SetStatus(3)
+        nr = fdr.SetStatus(EnumStatus.web_beg)
+        if nr == 0:
+            return
+
+        #dieser Teil koennte vom DrawImgThread erledigt werden {
+
 
         # Get the raw video frame and convert it to rgb
-        img = cv2.cvtColor(frameData.rawFrame,cv2.COLOR_BGR2RGB)
+        fdr.img = cv2.cvtColor(fdr.rawFrame,cv2.COLOR_BGR2RGB)
                     
         # Draw the contours of the found objects into the frame
-        cv2.drawContours(img, frameData.contours, -1, (0,255,0), 1, 8, None, 2, (frameData.roiRect.x1, frameData.roiRect.y1))
+        cv2.drawContours(fdr.img, fdr.contours, -1, (0,255,0), 1, 8, None, 2, (fdr.roiRect.x1, fdr.roiRect.y1))
                     
         # Draw the region of interest to show where it is in the raw frame
-        cv2.rectangle(img, (frameData.roiRect.x1, frameData.roiRect.y1), (frameData.roiRect.x2, frameData.roiRect.y2), (255, 0, 0))
+        cv2.rectangle(fdr.img, (fdr.roiRect.x1, fdr.roiRect.y1), (fdr.roiRect.x2, fdr.roiRect.y2), (255, 0, 0))
 
         # Draw small circles to indicate those contours which are detected as bees
-        for center in frameData.centers:
-            cv2.circle(img, (frameData.roiRect.x1 + center[0], frameData.roiRect.y1 + center[1]), 2, (255,255,255), -1) 
+        for center in fdr.centers:
+            cv2.circle(fdr.img, (fdr.roiRect.x1 + center[0], fdr.roiRect.y1 + center[1]), 2, (255,255,255), -1) 
 
-        jpg = Image.fromarray(img)
+        #dieser Teil koennte vom DrawImgThread erledigt werden }
+
+
+        jpg = Image.fromarray( fdr.img)
         tmpFile = StringIO.StringIO()
         jpg.save(tmpFile,'JPEG')
 
@@ -42,10 +51,10 @@ class CamHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write( tmpFile.getvalue() )
         
-        #time.sleep(1/frameDataRef[0].fps)
+        #time.sleep(1/fdrRef[0].fps)
 
-        frameData.webCount = frameData.webCount + 1
-        frameData.SetStatus(0)
+        fdr.countWeb = fdr.countWeb + 1
+        fdr.SetStatus(EnumStatus.web_end)
 
     def do_GET(self):
 
@@ -55,20 +64,11 @@ class CamHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type','multipart/x-mixed-replace; boundary=--jpgboundary')
             self.end_headers()
 
-            frameDataRef[0].imageCount = 0
-            frameDataRef[1].imageCount = 0 
             while True:
                 try:
-                    
-                    status = frameDataRef[0].status
-                    if status == 2:
-                        CamHandler.processImage(self, frameDataRef[0])
-
-
-                    status = frameDataRef[1].status
-                    if status == 2:
-                        CamHandler.processImage(self, frameDataRef[1])
-  
+                    for fdr in frameDataRef: 
+                        CamHandler.processImage(self, fdr)
+ 
                     if frameData.terminateWebThread == 1:
                         break;
 
@@ -124,4 +124,3 @@ class WebcamServerThread(threading.Thread):
         except KeyboardInterrupt:
             capture.release()
             server.socket.close()
-            
